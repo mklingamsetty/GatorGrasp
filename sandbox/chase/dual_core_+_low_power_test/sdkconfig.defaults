@@ -1,0 +1,12 @@
+# Enable Power Management & Automatic Light Sleep (Tickless Idle)
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_FREERTOS_HZ=1000
+
+# Enable Bluetooth (Lightweight NimBLE stack) & Wi-Fi/BLE Coexistence
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+
+# Keep internal RC_FAST clock calibrated for LEDC stability during sleep
+CONFIG_RTC_CLK_CAL_CYCLES=1024
