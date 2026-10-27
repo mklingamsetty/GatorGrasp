@@ -1,10 +1,11 @@
 // THROWAWAY debug harness - proves auth + BLE + Firestore work end to end.
-// Frontend teammate: replace this with real screens; keep calling the services in src/.
+// Styling pass: GatorGrasp title + glass buttons. Logic is unchanged.
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Button, ScrollView } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, StatusBar } from 'react-native';
 import { onUser, login, register, logout } from './src/services/auth';
 import { saveProfile, listProfiles } from './src/services/db';
 import ble from './src/ble/BleService';
+import GlassButton from './src/components/GlassButton';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -51,31 +52,136 @@ export default function App() {
 
   if (!user) {
     return (
-      <View style={{ padding: 40 }}>
-        <TextInput placeholder="email" autoCapitalize="none" value={email} onChangeText={setEmail} />
-        <TextInput placeholder="password" secureTextEntry value={pw} onChangeText={setPw} />
-        <Button title="Login" onPress={guard(() => login(email, pw))} />
-        <Button title="Register" onPress={guard(() => register(email, pw))} />
-        <Text>{log}</Text>
+      <View style={styles.screen}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.loginWrap}>
+          <Text style={styles.title}>GatorGrasp</Text>
+          <Text style={styles.subtitle}>Sign in to your arm</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="email"
+            placeholderTextColor="rgba(255,255,255,0.45)"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="password"
+            placeholderTextColor="rgba(255,255,255,0.45)"
+            secureTextEntry
+            value={pw}
+            onChangeText={setPw}
+          />
+
+          <GlassButton title="Login" variant="primary" onPress={guard(() => login(email, pw))} />
+          <GlassButton title="Register" onPress={guard(() => register(email, pw))} />
+          <Text style={styles.log}>{log}</Text>
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 40 }}>
-      <Text>{user.email}</Text>
-      <Button title="Logout" onPress={logout} />
-      <Button title="Scan" onPress={scan} />
-      {Object.values(devices).map((d) => (
-        <Button key={d.id} title={`Connect ${d.name || d.id}`} onPress={() => connect(d.id)} />
-      ))}
-      <Text>Connected: {String(connected)}</Text>
-      <Text>EMG: {emg.join(' | ')}</Text>
-      <Button title="Open hand (all 0)" onPress={guard(() => ble.writeServos([0,0,0,0,0,0]))} />
-      <Button title="Close hand (all 180)" onPress={guard(() => ble.writeServos([180,180,180,180,180,180]))} />
-      <Button title="Calibration: arm -> cloud" onPress={syncUp} />
-      <Button title="Calibration: cloud -> arm" onPress={syncDown} />
-      <Text>{log}</Text>
-    </ScrollView>
+    <View style={styles.screen}>
+      <StatusBar barStyle="light-content" />
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>GatorGrasp</Text>
+        <Text style={styles.subtitle}>{user.email}</Text>
+
+        <GlassButton title="Logout" variant="danger" onPress={logout} />
+
+        <Text style={styles.sectionLabel}>CONNECTION</Text>
+        <GlassButton title="Scan" variant="primary" onPress={scan} />
+        {Object.values(devices).map((d) => (
+          <GlassButton key={d.id} title={`Connect ${d.name || d.id}`} onPress={() => connect(d.id)} />
+        ))}
+
+        <View style={styles.card}>
+          <Text style={styles.cardText}>Connected: {String(connected)}</Text>
+          <Text style={styles.cardText}>EMG: {emg.join(' | ')}</Text>
+        </View>
+
+        <Text style={styles.sectionLabel}>HAND CONTROL</Text>
+        <GlassButton title="Open hand (all 0)" onPress={guard(() => ble.writeServos([0,0,0,0,0,0]))} />
+        <GlassButton title="Close hand (all 180)" onPress={guard(() => ble.writeServos([180,180,180,180,180,180]))} />
+
+        <Text style={styles.sectionLabel}>CALIBRATION</Text>
+        <GlassButton title="Calibration: arm -> cloud" onPress={syncUp} />
+        <GlassButton title="Calibration: cloud -> arm" onPress={syncDown} />
+
+        <Text style={styles.log}>{log}</Text>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#0B1F4D', // deep blue so the glass buttons have something to "float" on
+  },
+  loginWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  content: {
+    paddingHorizontal: 28,
+    paddingTop: 70,
+    paddingBottom: 50,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 40,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 15,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  input: {
+    color: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginVertical: 6,
+    fontSize: 16,
+  },
+  sectionLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginTop: 22,
+    marginBottom: 4,
+    marginLeft: 8,
+  },
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 18,
+    marginTop: 10,
+  },
+  cardText: {
+    color: '#fff',
+    fontSize: 15,
+    marginVertical: 2,
+  },
+  log: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    marginTop: 20,
+  },
+});
