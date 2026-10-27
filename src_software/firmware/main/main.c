@@ -17,16 +17,16 @@ static const char *TAG = "gatorgrasp";
 
 /* ---------- Config ---------- */
 #define SERVO_GPIO   4
-#define SERVO_MIN_US 500     /* check your servo's datasheet */
+#define SERVO_MIN_US 500
 #define SERVO_MAX_US 2500
-#define SAMPLE_PERIOD_MS 250   /* readings per second = 1000 / this */
-#define NUM_EMG      2         /* [0] = ADC1 unit, [1] = ADC2 unit */
-#define ADC1_CH      ADC_CHANNEL_0   /* ADC1_CH0 = GPIO1  */
-#define ADC2_CH      ADC_CHANNEL_0   /* ADC2_CH0 = GPIO11 (do not use while Wi-Fi is on) */
+#define SAMPLE_PERIOD_MS 250
+#define NUM_EMG      2
+#define ADC1_CH      ADC_CHANNEL_0
+#define ADC2_CH      ADC_CHANNEL_0
 
 /* ---------- State ---------- */
 static uint16_t emg[NUM_EMG];
-static uint8_t  calib[12] = { 0,0,0xFF,0x0F, 0,0,0xFF,0x0F, 0,0,0xFF,0x0F };  /* min 0, max 4095 x3 */
+static uint8_t  calib[12] = { 0,0,0xFF,0x0F, 0,0,0xFF,0x0F, 0,0,0xFF,0x0F };
 static adc_oneshot_unit_handle_t adc1, adc2;
 static uint8_t  own_addr_type;
 static uint16_t conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -98,7 +98,7 @@ static int servo_access(uint16_t ch, uint16_t ah, struct ble_gatt_access_ctxt *c
     uint16_t pktlen = OS_MBUF_PKTLEN(ctxt->om);
     if (pktlen < 1 || pktlen > sizeof buf) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     if (ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof buf, &len) != 0) return BLE_ATT_ERR_UNLIKELY;
-    servo_set(buf[0]);   /* first byte = angle; extra bytes ignored */
+    servo_set(buf[0]);
     return 0;
 }
 

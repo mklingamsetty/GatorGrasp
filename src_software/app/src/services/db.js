@@ -1,6 +1,3 @@
-// Firestore layout:
-//   users/{uid}/profiles/{profileId}  = { name, emgMin:[3], emgMax:[3], updatedAt }
-//   users/{uid}/readings/{readingId}  = { raw:[3], volts:[3], createdAt }
 import {
   collection, doc, addDoc, setDoc, getDocs, query, orderBy, limit, serverTimestamp,
 } from 'firebase/firestore';
@@ -28,7 +25,7 @@ export async function saveReading(uid, raw) {
   return ref.id;
 }
 
-// Newest first. Each item: { id, raw:[..], volts:[..], createdAt: Timestamp|null }
+// newest first. Each item: { id, raw:[..], volts:[..], createdAt: Timestamp|null }
 export async function listReadings(uid, n = 5) {
   const snap = await getDocs(query(readings(uid), orderBy('createdAt', 'desc'), limit(n)));
   return snap.docs.map((x) => ({ id: x.id, ...x.data() }));

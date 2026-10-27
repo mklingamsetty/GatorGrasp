@@ -1,5 +1,3 @@
-// THROWAWAY debug harness - proves auth + BLE + Firestore work end to end.
-// Styled with GlassButton. Logic: login, BLE connect, servo test, ADC readout, cloud save/load.
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, StatusBar } from 'react-native';
 import { onUser, login, register, logout } from './src/services/auth';
@@ -7,7 +5,6 @@ import { saveReading, listReadings } from './src/services/db';
 import ble from './src/ble/BleService';
 import GlassButton from './src/components/GlassButton';
 
-// Rough conversion: 12-bit ADC, 12 dB attenuation (~0-3.1 V usable). Not calibrated.
 const toVolts = (raw) => ((raw / 4095) * 3.1).toFixed(2);
 
 export default function App() {
