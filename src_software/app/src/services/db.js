@@ -1,9 +1,13 @@
-// Firestore layout:  users/{uid}  and  users/{uid}/profiles/{profileId}
-// profile = { name, emgMin:[3], emgMax:[3], updatedAt }
-import { collection, doc, addDoc, setDoc, getDocs, query, orderBy, serverTimestamp } from 'firebase/firestore';
+// Firestore layout:
+//   users/{uid}/profiles/{profileId}  = { name, emgMin:[3], emgMax:[3], updatedAt }
+//   users/{uid}/readings/{readingId}  = { raw:[3], volts:[3], createdAt }
+import {
+  collection, doc, addDoc, setDoc, getDocs, query, orderBy, limit, serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 const profiles = (uid) => collection(db, 'users', uid, 'profiles');
+const readings = (uid) => collection(db, 'users', uid, 'readings');
 
 export async function saveProfile(uid, profile, id = null) {
   const data = { ...profile, updatedAt: serverTimestamp() };
@@ -15,4 +19,17 @@ export async function saveProfile(uid, profile, id = null) {
 export async function listProfiles(uid) {
   const snap = await getDocs(query(profiles(uid), orderBy('updatedAt', 'desc')));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+// raw = [ch0, ch1, ch2] ADC counts (0..4095). Voltage is an approximate conversion.
+export async function saveReading(uid, raw) {
+  const volts = raw.map((r) => Number(((r / 4095) * 3.1).toFixed(3)));
+  const ref = await addDoc(readings(uid), { raw, volts, createdAt: serverTimestamp() });
+  return ref.id;
+}
+
+// Newest first. Each item: { id, raw:[..], volts:[..], createdAt: Timestamp|null }
+export async function listReadings(uid, n = 5) {
+  const snap = await getDocs(query(readings(uid), orderBy('createdAt', 'desc'), limit(n)));
+  return snap.docs.map((x) => ({ id: x.id, ...x.data() }));
 }

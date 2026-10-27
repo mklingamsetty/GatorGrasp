@@ -1,8 +1,3 @@
-// GATT service (UUIDs match app/src/ble/uuids.js):
-//     EMG   (read, notify): 3 x uint16 LE, raw ADC counts, 50 Hz
-//     SERVO (write)       : first byte = angle 0..180 (extra bytes ignored)
-//     CALIB (read, write) : 12 bytes, kept in RAM only (resets on reboot)
-
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -24,13 +19,15 @@ static const char *TAG = "gatorgrasp";
 #define SERVO_GPIO   4
 #define SERVO_MIN_US 500     /* check your servo's datasheet */
 #define SERVO_MAX_US 2500
-#define NUM_EMG      3
-static const adc_channel_t EMG_CH[NUM_EMG] = { ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_2 }; /* GPIO1,2,3 */
+#define SAMPLE_PERIOD_MS 250   /* readings per second = 1000 / this */
+#define NUM_EMG      2         /* [0] = ADC1 unit, [1] = ADC2 unit */
+#define ADC1_CH      ADC_CHANNEL_0   /* ADC1_CH0 = GPIO1  */
+#define ADC2_CH      ADC_CHANNEL_0   /* ADC2_CH0 = GPIO11 (do not use while Wi-Fi is on) */
 
 /* ---------- State ---------- */
 static uint16_t emg[NUM_EMG];
 static uint8_t  calib[12] = { 0,0,0xFF,0x0F, 0,0,0xFF,0x0F, 0,0,0xFF,0x0F };  /* min 0, max 4095 x3 */
-static adc_oneshot_unit_handle_t adc1;
+static adc_oneshot_unit_handle_t adc1, adc2;
 static uint8_t  own_addr_type;
 static uint16_t conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t emg_handle;
@@ -69,11 +66,24 @@ static void servo_set(uint8_t angle)
 /* ---------- ADC ---------- */
 static void adc_init(void)
 {
-    adc_oneshot_unit_init_cfg_t u = { .unit_id = ADC_UNIT_1 };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&u, &adc1));
+    adc_oneshot_unit_init_cfg_t u1 = { .unit_id = ADC_UNIT_1 };
+    adc_oneshot_unit_init_cfg_t u2 = { .unit_id = ADC_UNIT_2 };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&u1, &adc1));
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&u2, &adc2));
     adc_oneshot_chan_cfg_t c = { .atten = ADC_ATTEN_DB_12, .bitwidth = ADC_BITWIDTH_DEFAULT };
-    for (int i = 0; i < NUM_EMG; i++)
-        ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1, EMG_CH[i], &c));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1, ADC1_CH, &c));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc2, ADC2_CH, &c));
+}
+
+/* average of 16 reads to smooth noise */
+static uint16_t adc_read_avg(adc_oneshot_unit_handle_t unit, adc_channel_t ch)
+{
+    int sum = 0, raw = 0;
+    for (int k = 0; k < 16; k++) {
+        if (adc_oneshot_read(unit, ch, &raw) != ESP_OK) return 0;
+        sum += raw;
+    }
+    return (uint16_t)(sum / 16);
 }
 
 /* ---------- GATT callbacks ---------- */
@@ -84,10 +94,11 @@ static int emg_access(uint16_t ch, uint16_t ah, struct ble_gatt_access_ctxt *ctx
 
 static int servo_access(uint16_t ch, uint16_t ah, struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    uint8_t angle; uint16_t len;
-    if (OS_MBUF_PKTLEN(ctxt->om) < 1) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
-    if (ble_hs_mbuf_to_flat(ctxt->om, &angle, 1, &len) != 0) return BLE_ATT_ERR_UNLIKELY;
-    servo_set(angle);
+    uint8_t buf[16]; uint16_t len;
+    uint16_t pktlen = OS_MBUF_PKTLEN(ctxt->om);
+    if (pktlen < 1 || pktlen > sizeof buf) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+    if (ble_hs_mbuf_to_flat(ctxt->om, buf, sizeof buf, &len) != 0) return BLE_ATT_ERR_UNLIKELY;
+    servo_set(buf[0]);   /* first byte = angle; extra bytes ignored */
     return 0;
 }
 
@@ -172,16 +183,13 @@ static void sensor_task(void *p)
 {
     TickType_t last = xTaskGetTickCount();
     for (;;) {
-        for (int i = 0; i < NUM_EMG; i++) {
-            int raw = 0;
-            adc_oneshot_read(adc1, EMG_CH[i], &raw);
-            emg[i] = (uint16_t)raw;
-        }
+        emg[0] = adc_read_avg(adc1, ADC1_CH);
+        emg[1] = adc_read_avg(adc2, ADC2_CH);
         if (emg_notify_on && conn_handle != BLE_HS_CONN_HANDLE_NONE) {
             struct os_mbuf *om = ble_hs_mbuf_from_flat(emg, sizeof emg);
             if (om) ble_gatts_notify_custom(conn_handle, emg_handle, om);
         }
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(20));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
     }
 }
 
