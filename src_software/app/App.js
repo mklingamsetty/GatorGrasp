@@ -1,14 +1,14 @@
 // THROWAWAY debug harness - proves auth + BLE + Firestore work end to end.
-// Styling pass: GatorGrasp title + glass buttons. Logic is unchanged.
+// Styled with GlassButton. Logic: login, BLE connect, servo test, ADC readout, cloud save/load.
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, StatusBar } from 'react-native';
 import { onUser, login, register, logout } from './src/services/auth';
 import { saveReading, listReadings } from './src/services/db';
 import ble from './src/ble/BleService';
+import GlassButton from './src/components/GlassButton';
 
 // Rough conversion: 12-bit ADC, 12 dB attenuation (~0-3.1 V usable). Not calibrated.
 const toVolts = (raw) => ((raw / 4095) * 3.1).toFixed(2);
-import GlassButton from './src/components/GlassButton';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -115,17 +115,20 @@ export default function App() {
 
         <View style={styles.card}>
           <Text style={styles.cardText}>Connected: {String(connected)}</Text>
-          <Text style={styles.cardText}>EMG: {emg.join(' | ')}</Text>
+          <Text style={styles.cardText}>ADC1 (GPIO1): {emg[0]} ({toVolts(emg[0])} V)</Text>
+          <Text style={styles.cardText}>ADC2 (GPIO11): {emg[1]} ({toVolts(emg[1])} V)</Text>
         </View>
 
-        <Text style={styles.sectionLabel}>HAND CONTROL</Text>
-        <GlassButton title="Open hand (all 0)" onPress={guard(() => ble.writeServos([0,0,0,0,0,0]))} />
-        <GlassButton title="Close hand (all 180)" onPress={guard(() => ble.writeServos([180,180,180,180,180,180]))} />
+        <Text style={styles.sectionLabel}>SERVO TEST</Text>
+        <GlassButton title="0 degrees" onPress={() => servo(0)} />
+        <GlassButton title="90 degrees" onPress={() => servo(90)} />
+        <GlassButton title="180 degrees" onPress={() => servo(180)} />
 
-        <Text style={styles.sectionLabel}>CALIBRATION</Text>
-        <GlassButton title="Calibration: arm -> cloud" onPress={syncUp} />
-        <GlassButton title="Calibration: cloud -> arm" onPress={syncDown} />
+        <Text style={styles.sectionLabel}>CLOUD</Text>
+        <GlassButton title="Save reading to cloud" onPress={saveToCloud} />
+        <GlassButton title="Load readings from cloud" onPress={loadFromCloud} />
 
+        <Text style={styles.sectionLabel}>LOG</Text>
         <Text style={styles.log}>{log}</Text>
       </ScrollView>
     </View>
@@ -197,6 +200,6 @@ const styles = StyleSheet.create({
   log: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 12,
-    marginTop: 20,
+    marginTop: 6,
   },
 });
