@@ -28,5 +28,11 @@
     "IDF_TARGET": "esp32s3"
   },
   "idf.flashType": "UART",
-  "idf.monitorPort": "COM3"
+  "idf.monitorPort": "COM3",
+  "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=c:\\Users\\donut\\Desktop\\Classes\\Current\\SenDes\\GatorGrasp\\sandbox\\chase\\servo_test\\build"
+  ]
 }
