@@ -32,4 +32,7 @@ This pre-alpha build demonstrates the foundational end-to-end architecture of th
    * ESP32-S3 board has trouble driving more than 2 PWM signals while in low-power mode; have not tested with more than 3 servos in regular operating mode
 - **Cher Huang:** 
 - **Benjamin Smith:** 
-- **Trevor Turnquist:** 
+- **Trevor Turnquist:**
+     * MyoWare Sensor is prone to grounding issues, providing an incorrect signal if the user is not properly grounded (e.g. touching metal).
+     * The sensor is very sensitive, requiring some form of debouncing, creating a tradeoff between smoother actuation and reactivity.
+     * We do not currently have enough electrodes to test the full four MyoWare sensor setup. The cost for each day we test will be about $12 (12 electrodes at $1 each).
