@@ -125,7 +125,7 @@ export default function App() {
         <GlassButton title="Save reading to cloud" onPress={saveToCloud} />
         <GlassButton title="Load readings from cloud" onPress={loadFromCloud} />
 
-        <Text style={styles.sectionLabel}>LOG</Text>
+        <Text style={styles.sectionLabel}>LOGS</Text>
         <Text style={styles.log}>{log}</Text>
       </ScrollView>
     </View>
