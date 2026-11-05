@@ -1,19 +1,22 @@
-/sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_Dataset/.venv
-/sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_Dataset/edge_impulse_ready_csvs
+# Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
 
-data/
+# Native projects (Expo managed workflow)
+android/
+ios/
 
-*.pt
-*.espdl
-*.info
-*.onnx
-*.json
-!package.json
-!app.json
-!eas.json
-!tsconfig.json
+# EAS
+.eas/
 
-# ESP-IDF files/directories to ignore
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# ESP-IDF / Embedded
 build/
 **/build/
 
@@ -37,15 +40,23 @@ dependencies.lock
 *.map
 flasher_args.json
 
+# Machine learning / Edge Impulse
+data/
+.venv/
+**/.venv/
+
+edge_impulse_ready_csvs/
+
+*.pt
+*.espdl
+*.onnx
+*.info
+
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 .pytest_cache/
 
+# IDE / OS
 .vscode/
-
 .DS_Store
-
-node_modules/
-android/
-ios/
