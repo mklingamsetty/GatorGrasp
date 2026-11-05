@@ -18,7 +18,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.huang.ggapp",
+      "bundleIdentifier": "edu.ufl.gatorgrasp",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
