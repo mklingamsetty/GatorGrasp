@@ -30,7 +30,11 @@ This pre-alpha build demonstrates the foundational end-to-end architecture of th
    * The MyoWare sensor data being returned shows a much lower difference in voltage values between the resting and flexed forearm states than expected )only a ~200 mV difference vs an expected ~1 V difference)
    * Must determine whether sensor data is consistent enough across different users or if a user-specific configuration for the arm is required
    * ESP32-S3 board has trouble driving more than 2 PWM signals while in low-power mode; have not tested with more than 3 servos in regular operating mode
-- **Cher Huang:** 
+- **Cher Huang:**
+   * The app has not been built for iOS yet; building for an iPhone requires a Mac or Expo's cloud builder with a paid Apple Developer account, so iPhone users cannot run it yet
+   * Voltage values shown in the app are an approximate conversion (raw ADC count scaled to ~3.1 V), not a calibrated reading, so they may not match a multimeter
+   * The BLE calibration characteristic exists but is not used for anything yet
+   * Servo control from the app has only been tested with one servo
 - **Benjamin Smith:** 
 - **Trevor Turnquist:**
      * MyoWare Sensor is prone to grounding issues, providing an incorrect signal if the user is not properly grounded (e.g. touching metal).
