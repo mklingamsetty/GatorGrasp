@@ -6,8 +6,12 @@ data/
 *.pt
 *.espdl
 *.info
-*.json
 *.onnx
+*.json
+!package.json
+!app.json
+!eas.json
+!tsconfig.json
 
 # ESP-IDF files/directories to ignore
 build/
