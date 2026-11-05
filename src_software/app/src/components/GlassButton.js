@@ -1,8 +1,6 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet } from 'react-native';
 
-// Reusable "liquid glass-ish" button.
-// variant: 'glass' (default, frosted), 'primary' (UF orange glow), 'danger' (soft red)
 export default function GlassButton({ title, onPress, variant = 'glass', style }) {
   return (
     <Pressable
