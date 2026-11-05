@@ -18,7 +18,7 @@ This pre-alpha build demonstrates the foundational end-to-end architecture of th
 
 ## 2. System Architecture
 
-<img width="5046" height="3620" alt="MyoWare ESP32-S3 Control Architecture-2026-10-31-115627" src="https://github.com/user-attachments/assets/0308001b-788a-47fc-baef-d3ae37c5764b" />
+<img width="4379" height="3620" alt="MyoWare ESP32-S3 Control Architecture-2026-11-05-062710" src="https://github.com/user-attachments/assets/e6f08d61-b69d-4ddb-82ca-96b287f702af" />
 
 ## 3. Current Bugs/Issues:
 - **Murali Lingamsetty:**
