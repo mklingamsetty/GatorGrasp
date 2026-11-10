@@ -1,7 +1,6 @@
 // Login branch of app(archived)/App.js
 import 'package:flutter/material.dart';
 
-import '../app_log.dart';
 import '../services/auth.dart' as auth;
 import '../services/auth_errors.dart';
 import '../theme.dart';
@@ -9,8 +8,7 @@ import '../widgets/error_popup.dart';
 import '../widgets/glass_button.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.log});
-  final AppLog log;
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -27,16 +25,65 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  /// Auth errors get the friendly popup (authErrorInfo) and are also logged.
-  Future<void> _run(Future<void> Function() fn) async {
+  /// Which action is in progress ('login' / 'register'), or null.
+  String? _busy;
+
+  static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+  /// Catches empty/malformed input before calling Firebase, which otherwise
+  /// returns unhelpful errors for empty fields.
+  AuthErrorInfo? _validate({required bool registering}) {
+    final email = _email.text.trim();
+    final pw = _pw.text;
+    if (email.isEmpty && pw.isEmpty) {
+      return const AuthErrorInfo(
+          'Missing details', 'Enter your email and password.');
+    }
+    if (email.isEmpty) {
+      return const AuthErrorInfo('Missing email', 'Enter your email address.');
+    }
+    if (!_emailPattern.hasMatch(email)) {
+      return const AuthErrorInfo(
+          'Invalid email', "That doesn't look like a valid email address.");
+    }
+    if (pw.isEmpty) {
+      return const AuthErrorInfo('Missing password', 'Enter your password.');
+    }
+    if (registering && pw.length < 6) {
+      return const AuthErrorInfo(
+          'Weak password', 'Password must be at least 6 characters.');
+    }
+    return null;
+  }
+
+  /// Errors are shown only as a popup (not in the log).
+  Future<void> _submit({required bool registering}) async {
+    if (_busy != null) return;
+    FocusScope.of(context).unfocus();
+
+    final problem = _validate(registering: registering);
+    if (problem != null) {
+      await showErrorPopup(context,
+          title: problem.title, message: problem.message);
+      return;
+    }
+
+    setState(() => _busy = registering ? 'register' : 'login');
     try {
-      await fn();
+      final email = _email.text.trim();
+      if (registering) {
+        await auth.register(email, _pw.text);
+      } else {
+        await auth.login(email, _pw.text);
+      }
+      // On success the auth gate swaps this screen out automatically.
     } catch (e) {
       final info = authErrorInfo(e);
-      widget.log.say('ERR: ${info.message}');
       if (mounted) {
         await showErrorPopup(context, title: info.title, message: info.message);
       }
+    } finally {
+      if (mounted) setState(() => _busy = null);
     }
   }
 
@@ -62,20 +109,15 @@ class _LoginScreenState extends State<LoginScreen> {
             _GlassField(controller: _pw, hint: 'password', obscure: true),
             const SizedBox(height: 6),
             GlassButton(
-              title: 'Login',
+              title: _busy == 'login' ? 'Logging in…' : 'Login',
               variant: GlassVariant.primary,
-              onPressed: () =>
-                  _run(() => auth.login(_email.text.trim(), _pw.text)),
+              onPressed:
+                  _busy == null ? () => _submit(registering: false) : null,
             ),
             GlassButton(
-              title: 'Register',
-              onPressed: () =>
-                  _run(() => auth.register(_email.text.trim(), _pw.text)),
-            ),
-            const SizedBox(height: 6),
-            ListenableBuilder(
-              listenable: widget.log,
-              builder: (_, __) => Text(widget.log.text, style: GG.log),
+              title: _busy == 'register' ? 'Creating account…' : 'Register',
+              onPressed:
+                  _busy == null ? () => _submit(registering: true) : null,
             ),
           ],
         ),

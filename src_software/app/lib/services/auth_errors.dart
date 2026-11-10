@@ -11,6 +11,14 @@ class AuthErrorInfo {
 AuthErrorInfo authErrorInfo(Object e) {
   final code = e is FirebaseAuthException ? e.code : null;
   switch (code) {
+    // Returned for empty fields (the login screen also checks these first).
+    case 'missing-email':
+      return const AuthErrorInfo('Missing email', 'Enter your email address.');
+    case 'missing-password':
+      return const AuthErrorInfo('Missing password', 'Enter your password.');
+    case 'channel-error':
+      return const AuthErrorInfo(
+          'Missing details', 'Enter your email and password.');
     case 'invalid-email':
       return const AuthErrorInfo(
           'Invalid email', "That doesn't look like a valid email address.");
@@ -41,7 +49,16 @@ AuthErrorInfo authErrorInfo(Object e) {
       return const AuthErrorInfo(
           'Weak password', 'Password must be at least 6 characters.');
     default:
+      // Never show raw platform/channel text (e.g. "dev.flutter.pigeon...").
+      // Firebase's own message is OK if it's a normal sentence.
       final msg = e is FirebaseAuthException ? e.message : null;
-      return AuthErrorInfo('Something went wrong', msg ?? e.toString());
+      final readable = msg != null &&
+          msg.isNotEmpty &&
+          !msg.contains('dev.flutter') &&
+          !msg.contains('PlatformException');
+      return AuthErrorInfo(
+        'Something went wrong',
+        readable ? msg : 'Please try again in a moment.',
+      );
   }
 }

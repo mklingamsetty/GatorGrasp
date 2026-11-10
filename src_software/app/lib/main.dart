@@ -88,7 +88,7 @@ class _AuthGateState extends State<AuthGate> {
                   snap.connectionState == ConnectionState.waiting) {
                 child = const SplashScreen(key: ValueKey('splash'));
               } else if (user == null) {
-                child = LoginScreen(key: const ValueKey('login'), log: _log);
+                child = const LoginScreen(key: ValueKey('login'));
               } else {
                 child =
                     HomeScreen(key: ValueKey(user.uid), user: user, log: _log);
