@@ -8,6 +8,7 @@ import 'app_log.dart';
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/auth.dart' as auth;
 import 'theme.dart';
 
@@ -48,8 +49,20 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  /// How long the splash stays up at minimum, even if auth resolves sooner.
+  static const _splashMin = Duration(milliseconds: 1800);
+
   final _log = AppLog();
   late final Stream<User?> _user = auth.onUser();
+  bool _splashDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(_splashMin, () {
+      if (mounted) setState(() => _splashDone = true);
+    });
+  }
 
   @override
   void dispose() {
@@ -67,13 +80,23 @@ class _AuthGateState extends State<AuthGate> {
           child: StreamBuilder<User?>(
             stream: _user,
             builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
               final user = snap.data;
-              return user == null
-                  ? LoginScreen(log: _log)
-                  : HomeScreen(key: ValueKey(user.uid), user: user, log: _log);
+              // Splash until both the minimum time has passed and Firebase
+              // knows whether someone is signed in, then fade to the next screen.
+              final Widget child;
+              if (!_splashDone ||
+                  snap.connectionState == ConnectionState.waiting) {
+                child = const SplashScreen(key: ValueKey('splash'));
+              } else if (user == null) {
+                child = LoginScreen(key: const ValueKey('login'), log: _log);
+              } else {
+                child =
+                    HomeScreen(key: ValueKey(user.uid), user: user, log: _log);
+              }
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: child,
+              );
             },
           ),
         ),
