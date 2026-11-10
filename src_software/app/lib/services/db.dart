@@ -74,6 +74,15 @@ Future<String> saveReading(String uid, List<int> raw) async {
   return ref.id;
 }
 
+/// Live, newest-first list of the user's readings, up to [limit].
+/// Updates automatically when a reading is saved.
+Stream<List<Reading>> watchReadings(String uid, {int limit = 50}) =>
+    _readings(uid)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs.map(Reading.fromDoc).toList());
+
 /// Newest first.
 Future<List<Reading>> listReadings(String uid, {int n = 5}) async {
   final snap = await _readings(uid)

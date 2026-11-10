@@ -10,6 +10,7 @@ import '../services/auth.dart' as auth;
 import '../services/db.dart';
 import '../theme.dart';
 import '../widgets/glass_button.dart';
+import 'readings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.user, required this.log});
@@ -23,6 +24,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _ble = BleService.instance;
   final Map<String, ScanResult> _devices = {};
+  bool _scannedOnce = false;
   bool _connected = false;
   List<int> _emg = const [0, 0];
 
@@ -41,14 +43,17 @@ class _HomeScreenState extends State<HomeScreen> {
           _log.say('BLE permission denied');
           return;
         }
-        setState(_devices.clear);
+        setState(() {
+          _devices.clear();
+          _scannedOnce = true;
+        });
+        // The Scan button shows "Scanning…" while this runs (see build).
         await _ble.scan(
           (r) {
             if (mounted) setState(() => _devices[r.device.remoteId.str] = r);
           },
           (e) => _log.say('ERR: ${errorMessage(e)}'),
         );
-        _log.say('scanning...');
       });
 
   Future<void> _connect(ScanResult r) => _log.guard(() async {
@@ -86,20 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _log.say('saved to cloud: ${reading.join(', ')}');
       });
 
-  Future<void> _loadFromCloud() => _log.guard(() async {
-        final rows = await listReadings(widget.user.uid, n: 5);
-        if (rows.isEmpty) {
-          _log.say('no saved readings yet');
-          return;
-        }
-        final lines = rows.map((r) {
-          final t =
-              r.createdAt?.toLocal().toString().split('.').first ?? 'pending';
-          return '$t  volts: ${r.volts.join(' | ')}  raw: ${r.raw.join(' | ')}';
-        });
-        _log.say(
-            '--- last ${rows.length} saved readings ---\n${lines.join('\n')}');
-      });
+  void _openReadings() => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ReadingsScreen(uid: widget.user.uid),
+        ),
+      );
 
   String _deviceLabel(ScanResult r) {
     final name = r.advertisementData.advName.isNotEmpty
@@ -122,17 +118,33 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 4),
         Text(widget.user.email ?? '',
             style: GG.subtitle, textAlign: TextAlign.center),
-        const SizedBox(height: 24),
-        GlassButton(
-          title: 'Logout',
-          variant: GlassVariant.danger,
-          onPressed: () => _log.guard(auth.logout),
-        ),
+        const SizedBox(height: 8),
         _section('CONNECTION'),
-        GlassButton(
-          title: 'Scan',
-          variant: GlassVariant.primary,
-          onPressed: _scan,
+        StreamBuilder<bool>(
+          stream: _ble.isScanning,
+          initialData: _ble.isScanningNow,
+          builder: (_, snap) {
+            final scanning = snap.data ?? false;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassButton(
+                  title: scanning ? 'Scanning…' : 'Scan',
+                  variant: GlassVariant.primary,
+                  onPressed: scanning ? null : _scan,
+                ),
+                if (!scanning && _scannedOnce && _devices.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 2),
+                    child: Text(
+                      'No arm found. Make sure it is powered on and nearby.',
+                      textAlign: TextAlign.center,
+                      style: GG.log,
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
         for (final r in _devices.values)
           GlassButton(
@@ -165,8 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
           GlassButton(title: '$a degrees', onPressed: () => _servo(a)),
         _section('CLOUD'),
         GlassButton(title: 'Save reading to cloud', onPressed: _saveToCloud),
-        GlassButton(
-            title: 'Load readings from cloud', onPressed: _loadFromCloud),
+        GlassButton(title: 'View saved readings', onPressed: _openReadings),
         _section('LOGS'),
         ListenableBuilder(
           listenable: _log,
@@ -174,6 +185,12 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(_log.text, style: GG.log),
           ),
+        ),
+        const SizedBox(height: 28),
+        GlassButton(
+          title: 'Logout',
+          variant: GlassVariant.danger,
+          onPressed: () => _log.guard(auth.logout),
         ),
       ],
     );
