@@ -1,6 +1,98 @@
-Run:
+# ==============================================================================
+# GatorGrasp EMG Dataset Preparation & ESP32-S3 Deployment Guide
+# ==============================================================================
 
+1. Python Environment Setup:
+------------------------------------------------------------------------------
 python -m venv .venv
-.venv/Scripts\Activate
+.venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install numpy pandas openpyxl
+
+2. Dataset Generation Modes:
+------------------------------------------------------------------------------
+A. Generate Pure 4-Channel Dataset (Standard 4 MyoWare 2.0 sensors):
+   Input axes: emg1, emg2, emg3, emg4
+   Output folder: ./edge_impulse_ready_4ch_csvs/
+   Header file:   ./test_vectors_4ch.h
+
+   Command:
+   python prepare_edge_impulse_data.py --no-diff-features --output-dir ./edge_impulse_ready_4ch_csvs --header-out ./test_vectors_4ch.h
+
+   * Note: This is the dataset uploaded to Edge Impulse project 1161319 (91.84% test accuracy).
+
+
+B. Generate 6-Channel Dataset (Includes virtual differential axes):
+   Input axes: emg1, emg2, emg3, emg4, emg_diff_23, emg_ratio_23
+   Output folder: ./edge_impulse_ready_csvs/
+   Header file:   ./test_vectors.h
+
+   Command:
+   python prepare_edge_impulse_data.py
+
+   * Note: Adds (ch2 - ch3) and (ch2 - ch3)/(ch2 + ch3 + eps) to help the neural network
+     resolve subtle boundary differences between Gesture 3 and Gesture 4.
+
+
+C. Generate Train / Held-Out Subject Test Split (e.g. Test on Subjects 7 & 8):
+   Separates specific subjects into their own test directory so you can evaluate
+   cross-user generalization in Edge Impulse.
+
+   Command:
+   python prepare_edge_impulse_data.py --no-diff-features --output-dir ./dataset_train --test-output-dir ./dataset_test --test-subjects 7,8
+
+
+D. Custom Smoothing Window or Channel Count:
+   If adjusting envelope filter time constant or using 3 sensors:
+   python prepare_edge_impulse_data.py --smoothing-window 30 --num-channels 3
+
+
+3. CLI Arguments Reference for prepare_edge_impulse_data.py:
+------------------------------------------------------------------------------
+--input-dir           Path to raw Zenodo data folder (default: ./raw_zenodo_data)
+--output-dir          Output folder for generated CSV files (default: ./edge_impulse_ready_csvs)
+--header-out          Path for C++ test vectors header (default: ./test_vectors.h)
+--norm-mode           'global_scalar' (default, preserves muscle activation ratios)
+                      or 'per_channel' (legacy independent channel normalization)
+--add-diff-features   Enable virtual differential axes (default: enabled)
+--no-diff-features    Disable virtual differential axes (keeps strictly raw channels)
+--test-subjects       Comma-separated subject numbers to hold out (e.g. '7,8')
+--test-output-dir     Destination directory for held-out test subject CSVs
+--smoothing-window    Trapezoidal moving window size in samples @ 1 kHz (default: 25 ms)
+--num-channels        Number of EMG channels (default: 4)
+
+
+4. Edge Impulse Project Configuration (4-Channel Mode):
+------------------------------------------------------------------------------
+- Time Series Data: 300 ms window, 100 ms stride, 1000 Hz frequency
+- Processing Block: Flatten
+    * Axes: emg1, emg2, emg3, emg4
+    * Selected metrics: Average, Maximum, Root-mean-square (RMS), Standard deviation
+    * Yields 16 features total (4 metrics x 4 channels)
+- Learning Block: Classification
+    * Architecture:
+        Dense (64 neurons)
+        Dense (32 neurons)
+        Dropout (0.25)
+        Output (5 classes)
+    * Settings:
+        Cycles: 60 - 80
+        Learning rate: 0.002 - 0.003
+        Batch size: 32
+        Auto-weight classes: enabled
+
+
+5. Deploying to ESP32-S3 & Measuring Memory:
+------------------------------------------------------------------------------
+1. In Edge Impulse Studio -> Deployment -> C++ Library.
+2. Select 'Enable EON Compiler' and click 'Build'.
+3. Extract the downloaded zip into:
+   sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_ESP32S3_Test/Library/
+4. Copy the matching test vector header:
+   copy Hand_Gesture_Dataset/test_vectors_4ch.h Hand_Gesture_ESP32S3_Test/main/test_vectors.h
+5. Activate ESP-IDF and build:
+   . C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1
+   cd sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_ESP32S3_Test
+   idf.py set-target esp32s3
+   idf.py build
+   idf.py size

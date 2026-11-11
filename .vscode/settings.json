@@ -1,4 +1,4 @@
 {
-    "cmake.sourceDirectory": "C:/Users/huang/Classes/design/GatorGrasp/src_software/firmware",
-    "idf.currentSetup": "C:\\esp\\v6.1\\esp-idf"
+    "cmake.sourceDirectory": "${workspaceFolder}/src_software/firmware",
+    "cmake.configureOnOpen": false
 }

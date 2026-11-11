@@ -1,4 +1,4 @@
-# FILE: C:\Projects\GatorGrasp_EI\prepare_edge_impulse_data.py
+# FILE: sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_Dataset/prepare_edge_impulse_data.py
 import os
 import glob
 import re
@@ -13,9 +13,9 @@ HEADER_OUT = "./test_vectors.h"
 
 SAMPLE_RATE_HZ = 1000       # 1 kHz sampling rate
 CSV_WINDOW_MS = 2000        # 2-second CSV chunks
-EI_SLICE_MS = 200           # 200 ms inference window size for ESP32-S3 test header
+EI_SLICE_MS = 300           # 300 ms inference window size for ESP32-S3 test header
 SMOOTHING_WINDOW = 25       # 25 ms envelope smoothing
-NUM_CHANNELS = 4            # Set to 3 for 3x MyoWare, or 4 to use all 4 GIICA channels
+NUM_CHANNELS = 4            # 4 EMG channels (GIICA / MyoWare 2.0 array)
 
 def filter_powerline_and_bandpass(signal, fs=1000):
     """
@@ -68,7 +68,7 @@ def clean_label(filepath):
     raw_label = re.sub(r'[^a-z0-9]+', '_', raw_label).strip('_')
     return raw_label if raw_label else "gesture"
 
-def load_any_table(filepath, num_channels=3):
+def load_any_table(filepath, num_channels=4):
     """Loads CSV, TXT, or XLSX and extracts the EMG sensor columns."""
     ext = os.path.splitext(filepath)[1].lower()
     if ext == '.xlsx':
@@ -90,10 +90,16 @@ def parse_args():
     parser.add_argument("--input-dir", default=INPUT_DIR)
     parser.add_argument("--output-dir", default=OUTPUT_DIR)
     parser.add_argument("--header-out", default=HEADER_OUT)
-    parser.add_argument("--test-subjects", default="", help="Comma-separated subject numbers for held-out testing.")
+    parser.add_argument("--test-subjects", default="", help="Comma-separated subject numbers (e.g. '7,8') for held-out testing.")
     parser.add_argument("--test-output-dir", default="", help="Output directory for held-out subjects.")
     parser.add_argument("--smoothing-window", type=int, default=SMOOTHING_WINDOW)
     parser.add_argument("--num-channels", type=int, default=NUM_CHANNELS, help="Number of EMG channels (3 or 4).")
+    parser.add_argument("--norm-mode", choices=["global_scalar", "per_channel"], default="global_scalar",
+                        help="Normalization mode: global_scalar keeps channel ratios intact; per_channel scales channels independently.")
+    parser.add_argument("--add-diff-features", action="store_true", default=True,
+                        help="Add emg_diff_23 and emg_ratio_23 virtual axes to distinctly separate Gesture 3 from Gesture 4.")
+    parser.add_argument("--no-diff-features", dest="add_diff_features", action="store_false",
+                        help="Disable virtual differential axes and keep only the raw EMG channels.")
     return parser.parse_args()
 
 def main():
@@ -104,10 +110,20 @@ def main():
         v.strip().lower().replace("subject", "").strip()
         for v in args.test_subjects.split(",") if v.strip()
     }
-    test_output_dir = os.path.abspath(args.test_output_dir) if args.test_output_dir else ""
+    
+    # If test subjects are requested without an explicit test directory, create a 'test' subfolder
+    if test_subjects and not args.test_output_dir:
+        train_output_dir = os.path.join(output_dir, "train")
+        test_output_dir = os.path.join(output_dir, "test")
+    elif args.test_output_dir:
+        train_output_dir = output_dir
+        test_output_dir = os.path.abspath(args.test_output_dir)
+    else:
+        train_output_dir = output_dir
+        test_output_dir = ""
 
-    os.makedirs(output_dir, exist_ok=True)
-    for f in glob.glob(os.path.join(output_dir, "*.csv")):
+    os.makedirs(train_output_dir, exist_ok=True)
+    for f in glob.glob(os.path.join(train_output_dir, "*.csv")):
         os.remove(f)
     if test_output_dir:
         os.makedirs(test_output_dir, exist_ok=True)
@@ -129,6 +145,8 @@ def main():
     saved_test_vectors = {}
     label_counts = defaultdict(int)
 
+    print(f"[*] Processing {len(subject_groups)} subjects with norm_mode='{args.norm_mode}' | add_diff_features={args.add_diff_features}")
+
     for subject_number, fpaths in subject_groups.items():
         subject_recordings = []
         for fpath in fpaths:
@@ -148,14 +166,23 @@ def main():
         if not subject_recordings:
             continue
 
-        # Compute subject-wide 2nd and 98th percentile across ALL gestures for this subject
+        # Stack all subject data to compute subject-wide normalization
         all_subject_data = np.vstack([rec[2] for rec in subject_recordings])
-        subj_mins = np.percentile(all_subject_data, 2, axis=0)
-        subj_maxs = np.percentile(all_subject_data, 98, axis=0)
-        denom = np.where((subj_maxs - subj_mins) < 1e-6, 1.0, (subj_maxs - subj_mins))
+        
+        if args.norm_mode == "global_scalar":
+            # Global scalar normalization: scales all channels by the SAME factor.
+            # Preserves relative muscle activation ratios and prevents Gesture 3 from inverting into Gesture 4!
+            subj_mins = float(np.percentile(all_subject_data, 2))
+            subj_maxs = float(np.percentile(all_subject_data, 98))
+            denom = max(subj_maxs - subj_mins, 1e-6)
+        else:
+            # Legacy per-channel normalization
+            subj_mins = np.percentile(all_subject_data, 2, axis=0)
+            subj_maxs = np.percentile(all_subject_data, 98, axis=0)
+            denom = np.where((subj_maxs - subj_mins) < 1e-6, 1.0, (subj_maxs - subj_mins))
 
         is_test_subject = subject_number in test_subjects
-        destination_dir = test_output_dir if (is_test_subject and test_output_dir) else output_dir
+        destination_dir = test_output_dir if (is_test_subject and test_output_dir) else train_output_dir
 
         for fpath, label, smoothed in subject_recordings:
             normed = np.clip((smoothed - subj_mins) / denom, 0.0, 1.0)
@@ -165,8 +192,21 @@ def main():
             for w in range(num_windows):
                 chunk = normed[w * CSV_WINDOW_MS : (w + 1) * CSV_WINDOW_MS]
                 cols = {"timestamp": np.arange(0, CSV_WINDOW_MS, int(1000 / SAMPLE_RATE_HZ))}
+                
+                # Base EMG channels
                 for ch in range(args.num_channels):
                     cols[f"emg{ch+1}"] = np.round(chunk[:, ch], 5)
+
+                # Virtual differential channels (Ch2 = index 1, Ch3 = index 2)
+                if args.add_diff_features and args.num_channels >= 3:
+                    ch2 = chunk[:, 1]
+                    ch3 = chunk[:, 2]
+                    # Direct difference: positive for G3, negative for G4
+                    diff_23 = ch2 - ch3
+                    # Normalized ratio: bounds difference between -1.0 and +1.0
+                    ratio_23 = (ch2 - ch3) / (ch2 + ch3 + 1e-4)
+                    cols["emg_diff_23"] = np.round(diff_23, 5)
+                    cols["emg_ratio_23"] = np.round(ratio_23, 5)
 
                 ei_df = pd.DataFrame(cols)
                 out_csv = os.path.join(
@@ -176,17 +216,31 @@ def main():
                 ei_df.to_csv(out_csv, index=False)
                 file_counter += 1
 
+                # Extract a 300 ms test slice from the center window for test_vectors.h
                 if label not in saved_test_vectors and w == num_windows // 2:
-                    saved_test_vectors[label] = chunk[500 : 500 + EI_SLICE_MS].flatten()
+                    vector_data = []
+                    for ch in range(args.num_channels):
+                        vector_data.append(chunk[500 : 500 + EI_SLICE_MS, ch])
+                    if args.add_diff_features and args.num_channels >= 3:
+                        vector_data.append(cols["emg_diff_23"][500 : 500 + EI_SLICE_MS])
+                        vector_data.append(cols["emg_ratio_23"][500 : 500 + EI_SLICE_MS])
+                    
+                    # Interleave channels: [t0_ch0, t0_ch1, ..., t1_ch0, t1_ch1, ...]
+                    interleaved = np.column_stack(vector_data).flatten()
+                    saved_test_vectors[label] = interleaved
 
+    num_channels_out = args.num_channels + (2 if (args.add_diff_features and args.num_channels >= 3) else 0)
     print(f"[SUCCESS] Generated {file_counter} CSVs across classes: {dict(label_counts)}")
+    print(f"          Output columns: {list(cols.keys())[1:]} ({num_channels_out} channels total)")
+    print(f"          Destination: {train_output_dir}" + (f" and {test_output_dir}" if test_output_dir else ""))
 
     with open(header_out, "w") as f:
-        f.write(f"// Auto-generated real EMG test vectors ({EI_SLICE_MS}ms x {args.num_channels} channels)\n#pragma once\n\n")
+        f.write(f"// Auto-generated real EMG test vectors ({EI_SLICE_MS}ms x {num_channels_out} channels)\n#pragma once\n\n")
         for lbl, vec in sorted(saved_test_vectors.items()):
             c_name = re.sub(r'[^a-zA-Z0-9_]', '_', lbl)
             vals = ", ".join([f"{v:.4f}f" for v in vec])
             f.write(f"const float test_{c_name}[{len(vec)}] = {{ {vals} }};\n\n")
+    print(f"[*] Updated C++ header test vectors: {header_out} ({EI_SLICE_MS}ms x {num_channels_out} channels = {EI_SLICE_MS * num_channels_out} floats)")
 
 if __name__ == "__main__":
     main()

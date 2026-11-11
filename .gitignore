@@ -60,3 +60,4 @@ __pycache__/
 # IDE / OS
 .vscode/
 .DS_Store
+/sandbox/murali/EdgeImpulse_Testing/Hand_Gesture_Dataset/edge_impulse_ready_4ch_csvs

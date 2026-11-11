@@ -1,7 +1,7 @@
 
-# Edge Impulse library for GatorGrasp_ESP32S3_EMGHandGesture
+# Edge Impulse library for GatorGrasp_EMG_V2
 
-This is a C++ library that lets you run the impulse for "GatorGrasp_ESP32S3_EMGHandGesture" (https://studio.edgeimpulse.com/studio/1146622) on any device. It consists of the Edge Impulse inferencing SDK - with implementations of both processing and learning blocks - and your model. You will need to include this library in your project to run your impulse locally.
+This is a C++ library that lets you run the impulse for "GatorGrasp_EMG_V2" (https://studio.edgeimpulse.com/studio/1161319) on any device. It consists of the Edge Impulse inferencing SDK - with implementations of both processing and learning blocks - and your model. You will need to include this library in your project to run your impulse locally.
 
 ## Getting Started
 
