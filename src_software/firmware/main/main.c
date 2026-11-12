@@ -23,9 +23,22 @@ static const char *TAG = "gatorgrasp";
 #define SERVO_GPIO              8
 #define NUM_SERVOS              1
 
-/* GPIO 7 = ADC1 channel 6 on ESP32-S3 */
-#define MYOWARE_ADC_UNIT        ADC_UNIT_1
-#define MYOWARE_ADC_CHANNEL     ADC_CHANNEL_6
+/* 4 EMG inputs, all on ADC1 (ADC2 is unreliable while the BLE radio is on).
+ * GPIO 4..7 sit next to each other on the header and are not strapping pins.
+ *   EMG index:  0       1       2       3
+ *   GPIO:       4       5       6       7
+ *   ADC1 ch:    3       4       5       6
+ * Unconnected inputs float and read noise; tie unused ones to GND. */
+#define NUM_EMG                 4
+#define EMG_ADC_UNIT            ADC_UNIT_1
+static const adc_channel_t emg_channels[NUM_EMG] = {
+    ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6,
+};
+static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 7 };
+
+/* Channel that drives the flex/relax servo logic: GPIO 7, the original
+ * MyoWare wiring. */
+#define FLEX_EMG_INDEX          3
 
 /* ---------------- Servo PWM (MG995) ---------------- */
 #define SERVO_LEDC_TIMER        LEDC_TIMER_0
@@ -39,21 +52,29 @@ static const char *TAG = "gatorgrasp";
 /* ---------------- EMG thresholds & timing ---------------- */
 #define FLEX_THRESHOLD_HIGH     350     /* flex trigger  (12-bit ADC, 0..4095) */
 #define RELAX_THRESHOLD_LOW     250     /* relax trigger (hysteresis)          */
-#define ADC_SAMPLES_PER_READ    8
+/* Per channel: read ADC_SAMPLES_PER_READ samples, drop the min and max,
+ * average the rest (trimmed mean rejects single-sample spikes). */
+#define ADC_SAMPLES_PER_READ    10
 #define POLL_INTERVAL_MS        50      /* 20 Hz sample + BLE notify rate      */
 #define LOG_EVERY_N_SAMPLES     20      /* periodic EMG log once per second    */
-
-/* BLE packet keeps the original 2-channel layout (2 x uint16 LE) so existing
- * clients still parse it. Only channel 0 is wired; channel 1 is always 0. */
-#define NUM_EMG                 2
 
 /* ---------------- State ---------------- */
 static const int servo_gpios[NUM_SERVOS] = { SERVO_GPIO };
 static const ledc_channel_t servo_channels[NUM_SERVOS] = { LEDC_CHANNEL_0 };
 
 static adc_oneshot_unit_handle_t adc_handle;
+
+/* BLE EMG packet: NUM_EMG x uint16 little-endian (8 bytes), one per channel
+ * in emg_channels[] order. The ESP32-S3 is little-endian, so the array is
+ * sent as-is. */
 static uint16_t emg[NUM_EMG];
-static uint8_t  calib[12] = { 0,0,0xFF,0x0F, 0,0,0xFF,0x0F, 0,0,0xFF,0x0F };
+
+/* Calibration: per channel { min uint16 LE, max uint16 LE } = 4 bytes each.
+ * Stored only; not used by the firmware logic yet. Default min 0, max 4095. */
+#define CALIB_BYTES             (NUM_EMG * 4)
+static uint8_t  calib[CALIB_BYTES] = {
+    0,0,0xFF,0x0F,  0,0,0xFF,0x0F,  0,0,0xFF,0x0F,  0,0,0xFF,0x0F,
+};
 
 static uint8_t  own_addr_type;
 static uint16_t conn_handle = BLE_HS_CONN_HANDLE_NONE;
@@ -121,10 +142,10 @@ static void servos_set_angle(int angle)
 /* ======================================================================
  * MyoWare / ADC
  * ====================================================================== */
-static void myoware_adc_init(void)
+static void emg_adc_init(void)
 {
     adc_oneshot_unit_init_cfg_t init_cfg = {
-        .unit_id  = MYOWARE_ADC_UNIT,
+        .unit_id  = EMG_ADC_UNIT,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_cfg, &adc_handle));
@@ -133,20 +154,39 @@ static void myoware_adc_init(void)
         .bitwidth = ADC_BITWIDTH_12,
         .atten    = ADC_ATTEN_DB_12,   /* ~0..3.1 V full scale */
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, MYOWARE_ADC_CHANNEL, &chan_cfg));
+    for (int i = 0; i < NUM_EMG; i++) {
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, emg_channels[i], &chan_cfg));
+    }
 }
 
-/* Averaged read; returns -1 on ADC error */
-static int myoware_read_averaged(void)
+/* Trimmed-mean read of one channel; returns -1 on ADC error.
+ * The first conversion after switching channels is discarded: the ADC's
+ * sample capacitor still holds charge from the previous pin, which otherwise
+ * bleeds one channel's value into the next (crosstalk). */
+static int emg_read_channel(adc_channel_t ch)
 {
-    int sum = 0, raw = 0;
+    int raw = 0;
+    if (adc_oneshot_read(adc_handle, ch, &raw) != ESP_OK) return -1;  /* settle */
+
+    int sum = 0, lo = 4095, hi = 0;
     for (int i = 0; i < ADC_SAMPLES_PER_READ; i++) {
-        if (adc_oneshot_read(adc_handle, MYOWARE_ADC_CHANNEL, &raw) != ESP_OK) {
-            return -1;
-        }
+        if (adc_oneshot_read(adc_handle, ch, &raw) != ESP_OK) return -1;
         sum += raw;
+        if (raw < lo) lo = raw;
+        if (raw > hi) hi = raw;
     }
-    return sum / ADC_SAMPLES_PER_READ;
+    return (sum - lo - hi) / (ADC_SAMPLES_PER_READ - 2);
+}
+
+/* Reads all channels into out[]; returns false if any read failed. */
+static bool emg_read_all(uint16_t out[NUM_EMG])
+{
+    for (int i = 0; i < NUM_EMG; i++) {
+        int v = emg_read_channel(emg_channels[i]);
+        if (v < 0) return false;
+        out[i] = (uint16_t)v;
+    }
+    return true;
 }
 
 /* ======================================================================
@@ -268,10 +308,10 @@ static void emg_task(void *p)
     TickType_t last = xTaskGetTickCount();
 
     for (;;) {
-        int val = myoware_read_averaged();
-        if (val >= 0) {
-            emg[0] = (uint16_t)val;
-            emg[1] = 0;     /* second channel not wired */
+        uint16_t sample[NUM_EMG];
+        if (emg_read_all(sample)) {
+            memcpy(emg, sample, sizeof emg);
+            int val = sample[FLEX_EMG_INDEX];
 
             /* Hysteresis state machine: flex -> 180 deg, relax -> 0 deg */
             if (!is_flexed && val >= FLEX_THRESHOLD_HIGH) {
@@ -286,13 +326,14 @@ static void emg_task(void *p)
 
             if (++log_count >= LOG_EVERY_N_SAMPLES) {
                 log_count = 0;
-                ESP_LOGI(TAG, "EMG ADC: %4d | %s", val, is_flexed ? "FLEX (180)" : "RELAX (0)");
+                ESP_LOGI(TAG, "EMG GPIO4:%4u GPIO5:%4u GPIO6:%4u GPIO7:%4u | %s",
+                         sample[0], sample[1], sample[2], sample[3],
+                         is_flexed ? "FLEX (180)" : "RELAX (0)");
             }
 
             /* Send over BLE if a client is subscribed */
             if (emg_notify_on && conn_handle != BLE_HS_CONN_HANDLE_NONE) {
-                uint16_t snap[NUM_EMG] = { emg[0], emg[1] };
-                struct os_mbuf *om = ble_hs_mbuf_from_flat(snap, sizeof snap);
+                struct os_mbuf *om = ble_hs_mbuf_from_flat(sample, sizeof sample);
                 if (om) ble_gatts_notify_custom(conn_handle, emg_handle, om);
             }
         } else {
@@ -331,7 +372,7 @@ void app_main(void)
     ESP_ERROR_CHECK(r);
 
     servos_init();            /* servos start at 0 deg (relaxed) */
-    myoware_adc_init();
+    emg_adc_init();
     low_power_init();
 
     ESP_ERROR_CHECK(nimble_port_init());
@@ -345,5 +386,6 @@ void app_main(void)
 
     xTaskCreate(emg_task, "emg", 4096, NULL, 5, NULL);
 
-    ESP_LOGI(TAG, "Initialized. Servos at 0 deg, waiting for EMG on GPIO 7...");
+    ESP_LOGI(TAG, "Initialized. Servos at 0 deg. EMG on GPIO %d/%d/%d/%d, flex logic on GPIO %d",
+             emg_gpios[0], emg_gpios[1], emg_gpios[2], emg_gpios[3], emg_gpios[FLEX_EMG_INDEX]);
 }

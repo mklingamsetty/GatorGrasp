@@ -26,7 +26,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, ScanResult> _devices = {};
   bool _scannedOnce = false;
   bool _connected = false;
-  List<int> _emg = const [0, 0];
+  String? _connectedName; // shown in the "Connected" badge
+  String? _connectingId; // device being connected to, or null
+  List<int> _emg = List.filled(emgChannelCount, 0);
 
   AppLog get _log => widget.log;
 
@@ -57,19 +59,39 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
   Future<void> _connect(ScanResult r) => _log.guard(() async {
-        _log.say('connecting...');
-        await _ble.connect(r.device, onDisconnect: () {
-          if (mounted) setState(() => _connected = false);
-          _log.say('disconnected');
-        });
-        setState(() => _connected = true);
-        await _ble.subscribeEmg(
-          (v) {
-            if (mounted) setState(() => _emg = v);
-          },
-          (e) => _log.say('ADC ERR: ${errorMessage(e)}'),
-        );
-        _log.say('connected!');
+        if (_connectingId != null) return;
+        setState(() => _connectingId = r.device.remoteId.str);
+        try {
+          _log.say('connecting...');
+          await _ble.connect(r.device, onDisconnect: () {
+            if (mounted) {
+              // Back to the Scan button; the user scans again to reconnect.
+              setState(() {
+                _connected = false;
+                _connectedName = null;
+                _emg = List.filled(emgChannelCount, 0);
+              });
+            }
+            _log.say('disconnected');
+          });
+          // Connected: the Scan button and device list are replaced by the
+          // "Connected" badge (see build).
+          setState(() {
+            _connected = true;
+            _connectedName = _deviceLabel(r);
+            _devices.clear();
+            _scannedOnce = false;
+          });
+          await _ble.subscribeEmg(
+            (v) {
+              if (mounted) setState(() => _emg = v);
+            },
+            (e) => _log.say('ADC ERR: ${errorMessage(e)}'),
+          );
+          _log.say('connected!');
+        } finally {
+          if (mounted) setState(() => _connectingId = null);
+        }
       });
 
   Future<void> _servo(int angle) => _log.guard(() async {
@@ -104,6 +126,64 @@ class _HomeScreenState extends State<HomeScreen> {
     return name.isNotEmpty ? name : r.device.remoteId.str;
   }
 
+  Widget _emgRow(int i) {
+    final gpio = i < emgChannelGpios.length ? emgChannelGpios[i] : null;
+    final raw = _emg[i];
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'EMG ${i + 1}${gpio == null ? '' : '  ·  GPIO $gpio'}',
+              style: GG.cardText,
+            ),
+          ),
+          SizedBox(
+            width: 52,
+            child: Text('$raw', textAlign: TextAlign.right, style: GG.cardText),
+          ),
+          SizedBox(
+            width: 70,
+            child: Text(
+              '${toVolts(raw).toStringAsFixed(2)} V',
+              textAlign: TextAlign.right,
+              style: GG.cardText.copyWith(color: GG.white(0.7)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Scan button ("Scanning…" while running) + "no arm found" hint.
+  Widget _scanArea() => StreamBuilder<bool>(
+        stream: _ble.isScanning,
+        initialData: _ble.isScanningNow,
+        builder: (_, snap) {
+          final scanning = snap.data ?? false;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GlassButton(
+                title: scanning ? 'Scanning…' : 'Scan',
+                variant: GlassVariant.primary,
+                onPressed: scanning || _connectingId != null ? null : _scan,
+              ),
+              if (!scanning && _scannedOnce && _devices.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 2),
+                  child: Text(
+                    'No arm found. Make sure it is powered on and nearby.',
+                    textAlign: TextAlign.center,
+                    style: GG.log,
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+
   Widget _section(String label) => Padding(
         padding: const EdgeInsets.only(top: 22, bottom: 4, left: 8),
         child: Text(label, style: GG.sectionLabel),
@@ -120,37 +200,18 @@ class _HomeScreenState extends State<HomeScreen> {
             style: GG.subtitle, textAlign: TextAlign.center),
         const SizedBox(height: 8),
         _section('CONNECTION'),
-        StreamBuilder<bool>(
-          stream: _ble.isScanning,
-          initialData: _ble.isScanningNow,
-          builder: (_, snap) {
-            final scanning = snap.data ?? false;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GlassButton(
-                  title: scanning ? 'Scanning…' : 'Scan',
-                  variant: GlassVariant.primary,
-                  onPressed: scanning ? null : _scan,
-                ),
-                if (!scanning && _scannedOnce && _devices.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4, bottom: 2),
-                    child: Text(
-                      'No arm found. Make sure it is powered on and nearby.',
-                      textAlign: TextAlign.center,
-                      style: GG.log,
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-        for (final r in _devices.values)
-          GlassButton(
-            title: 'Connect ${_deviceLabel(r)}',
-            onPressed: () => _connect(r),
-          ),
+        if (_connected)
+          _ConnectedBadge(name: _connectedName ?? 'GatorGrasp')
+        else ...[
+          _scanArea(),
+          for (final r in _devices.values)
+            GlassButton(
+              title: _connectingId == r.device.remoteId.str
+                  ? 'Connecting…'
+                  : 'Connect ${_deviceLabel(r)}',
+              onPressed: _connectingId == null ? () => _connect(r) : null,
+            ),
+        ],
         Container(
           margin: const EdgeInsets.only(top: 10),
           padding: const EdgeInsets.all(18),
@@ -158,17 +219,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Connected: $_connected', style: GG.cardText),
-              const SizedBox(height: 4),
-              Text(
-                'ADC1 (GPIO1): ${_emg[0]} (${toVolts(_emg[0]).toStringAsFixed(2)} V)',
-                style: GG.cardText,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'ADC2 (GPIO11): ${_emg[1]} (${toVolts(_emg[1]).toStringAsFixed(2)} V)',
-                style: GG.cardText,
-              ),
+              // Connection status is shown by the badge / Scan button above.
+              // One row per channel the firmware sends (GPIO 4, 5, 6, 7).
+              for (var i = 0; i < _emg.length; i++) _emgRow(i),
             ],
           ),
         ),
@@ -193,6 +246,50 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: () => _log.guard(auth.logout),
         ),
       ],
+    );
+  }
+}
+
+/// Replaces the Scan button + device list while the arm is connected.
+/// Same pill shape as GlassButton, green-tinted, not tappable.
+class _ConnectedBadge extends StatelessWidget {
+  const _ConnectedBadge({required this.name});
+  final String name;
+
+  static const _green = Color(0xFF34C77B);
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Connected to $name',
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 22),
+        decoration: BoxDecoration(
+          color: _green.withAlpha(46),
+          border: Border.all(color: _green.withAlpha(140)),
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: _green, size: 20),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Connected to $name',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

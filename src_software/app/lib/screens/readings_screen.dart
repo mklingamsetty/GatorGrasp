@@ -98,7 +98,9 @@ class _ReadingCard extends StatelessWidget {
           children: [
             SizedBox(
               width: 56,
-              child: Text('ADC${i + 1}', style: GG.sectionLabel),
+              // No GPIO label: older readings came from older firmware
+              // with different pins (and only 2 channels).
+              child: Text('EMG ${i + 1}', style: GG.sectionLabel),
             ),
             Expanded(child: Text('${r.raw[i]}', style: GG.cardText)),
             Text('$volts V', style: GG.cardText),
