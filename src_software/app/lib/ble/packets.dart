@@ -4,7 +4,7 @@
 import 'dart:typed_data';
 
 /// GPIO pin for each EMG channel, in packet order (firmware `emg_gpios[]`).
-const emgChannelGpios = [4, 5, 6, 7];
+const emgChannelGpios = [4, 5, 6, 8];
 
 /// Number of EMG channels the current firmware sends.
 const emgChannelCount = 4;

@@ -20,24 +20,23 @@
 static const char *TAG = "gatorgrasp";
 
 /* ---------------- Pin configuration ---------------- */
-#define SERVO_GPIO              8
+#define SERVO_GPIO              7
 #define NUM_SERVOS              1
 
 /* 4 EMG inputs, all on ADC1 (ADC2 is unreliable while the BLE radio is on).
- * GPIO 4..7 sit next to each other on the header and are not strapping pins.
+ * None of these are strapping pins. GPIO 7 is taken by the servo signal.
  *   EMG index:  0       1       2       3
- *   GPIO:       4       5       6       7
- *   ADC1 ch:    3       4       5       6
+ *   GPIO:       4       5       6       8
+ *   ADC1 ch:    3       4       5       7
  * Unconnected inputs float and read noise; tie unused ones to GND. */
 #define NUM_EMG                 4
 #define EMG_ADC_UNIT            ADC_UNIT_1
 static const adc_channel_t emg_channels[NUM_EMG] = {
-    ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6,
+    ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_7,
 };
-static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 7 };
+static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 8 };
 
-/* Channel that drives the flex/relax servo logic: GPIO 7, the original
- * MyoWare wiring. */
+/* Channel that drives the flex/relax servo logic: GPIO 8. */
 #define FLEX_EMG_INDEX          3
 
 /* ---------------- Servo PWM (MG995) ---------------- */
@@ -47,7 +46,7 @@ static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 7 };
 #define SERVO_PWM_FREQ_HZ       50
 #define SERVO_PERIOD_US         20000
 #define SERVO_MIN_PULSE_US      500     /* 0 deg   */
-#define SERVO_MAX_PULSE_US      2400    /* 180 deg */
+#define SERVO_MAX_PULSE_US      2500    /* 180 deg (MG995 high-end travel limit) */
 
 /* ---------------- EMG thresholds & timing ---------------- */
 #define FLEX_THRESHOLD_HIGH     350     /* flex trigger  (12-bit ADC, 0..4095) */
@@ -326,7 +325,7 @@ static void emg_task(void *p)
 
             if (++log_count >= LOG_EVERY_N_SAMPLES) {
                 log_count = 0;
-                ESP_LOGI(TAG, "EMG GPIO4:%4u GPIO5:%4u GPIO6:%4u GPIO7:%4u | %s",
+                ESP_LOGI(TAG, "EMG GPIO4:%4u GPIO5:%4u GPIO6:%4u GPIO8:%4u | %s",
                          sample[0], sample[1], sample[2], sample[3],
                          is_flexed ? "FLEX (180)" : "RELAX (0)");
             }
