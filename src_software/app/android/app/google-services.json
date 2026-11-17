@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "97562623316",
+    "project_id": "gatorgrasp-a74fe",
+    "storage_bucket": "gatorgrasp-a74fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:97562623316:android:1a35e651508560e7975cc1",
+        "android_client_info": {
+          "package_name": "com.anonymous.ggapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaEXVEXUqUyH-WJM_omLNjr2js49sRo14"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches GG.background in lib/theme.dart -->
+    <color name="splash_background">#0B1F4D</color>
+</resources>

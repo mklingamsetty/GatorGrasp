@@ -4,9 +4,20 @@ node_modules/
 dist/
 web-build/
 
-# Native projects (Expo managed workflow)
-android/
-ios/
+# Native projects (Expo managed workflow, generated; archived app only).
+# The Flutter app's android/ and ios/ ARE source and must be committed.
+src_software/app(archived)/android/
+src_software/app(archived)/ios/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/android/.gradle/
+**/android/local.properties
+**/ios/Pods/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
 
 # EAS
 .eas/
