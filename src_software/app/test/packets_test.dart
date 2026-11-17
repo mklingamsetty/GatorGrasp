@@ -50,7 +50,7 @@ void main() {
         emgMax: [2, 4095, 0, 8],
       );
       final bytes = encodeCalibration(c);
-      expect(bytes.length, emgChannelCount * 4);
+      expect(bytes.length, c.channels * 4);
       final back = parseCalibration(bytes);
       expect(back.emgMin, c.emgMin);
       expect(back.emgMax, c.emgMax);

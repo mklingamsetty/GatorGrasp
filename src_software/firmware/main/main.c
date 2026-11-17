@@ -20,24 +20,36 @@
 static const char *TAG = "gatorgrasp";
 
 /* ---------------- Pin configuration ---------------- */
-#define SERVO_GPIO              7
+#define SERVO_GPIO              15
 #define NUM_SERVOS              1
 
-/* 4 EMG inputs, all on ADC1 (ADC2 is unreliable while the BLE radio is on).
- * None of these are strapping pins. GPIO 7 is taken by the servo signal.
- *   EMG index:  0       1       2       3
- *   GPIO:       4       5       6       8
- *   ADC1 ch:    3       4       5       7
- * Unconnected inputs float and read noise; tie unused ones to GND. */
-#define NUM_EMG                 4
+/* EMG inputs must be on ADC1 (ADC2 is unreliable while the BLE radio is on).
+ *
+ * DEMO: one EMG input only, on GPIO 7 (ADC1 ch 6).
+ * The app reads the channel count from the packet length, so it adapts. */
+#define NUM_EMG                 1
 #define EMG_ADC_UNIT            ADC_UNIT_1
-static const adc_channel_t emg_channels[NUM_EMG] = {
-    ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_7,
-};
-static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 8 };
+static const adc_channel_t emg_channels[NUM_EMG] = { ADC_CHANNEL_6 };
+static const int emg_gpios[NUM_EMG] = { 7 };
 
-/* Channel that drives the flex/relax servo logic: GPIO 8. */
-#define FLEX_EMG_INDEX          3
+/* Full 4-channel setup (restore these, and the matching lines marked
+ * "4-channel" below, plus emgChannelGpios in the app's lib/ble/packets.dart).
+ * If the servo stays on GPIO 15, GPIO 7 can be an EMG input again.
+ *   EMG index:  0       1       2       3
+ *   GPIO:       4       5       6       7
+ *   ADC1 ch:    3       4       5       6
+ * Unconnected inputs float and read noise; tie unused ones to GND.
+ *
+ * #define NUM_EMG                 4
+ * static const adc_channel_t emg_channels[NUM_EMG] = {
+ *     ADC_CHANNEL_3, ADC_CHANNEL_4, ADC_CHANNEL_5, ADC_CHANNEL_6,
+ * };
+ * static const int emg_gpios[NUM_EMG] = { 4, 5, 6, 7 };
+ * #define FLEX_EMG_INDEX          3
+ */
+
+/* Channel that drives the flex/relax servo logic: GPIO 7. */
+#define FLEX_EMG_INDEX          0
 
 /* ---------------- Servo PWM (MG995) ---------------- */
 #define SERVO_LEDC_TIMER        LEDC_TIMER_0
@@ -63,7 +75,7 @@ static const ledc_channel_t servo_channels[NUM_SERVOS] = { LEDC_CHANNEL_0 };
 
 static adc_oneshot_unit_handle_t adc_handle;
 
-/* BLE EMG packet: NUM_EMG x uint16 little-endian (8 bytes), one per channel
+/* BLE EMG packet: NUM_EMG x uint16 little-endian (2 bytes each), one per channel
  * in emg_channels[] order. The ESP32-S3 is little-endian, so the array is
  * sent as-is. */
 static uint16_t emg[NUM_EMG];
@@ -72,7 +84,8 @@ static uint16_t emg[NUM_EMG];
  * Stored only; not used by the firmware logic yet. Default min 0, max 4095. */
 #define CALIB_BYTES             (NUM_EMG * 4)
 static uint8_t  calib[CALIB_BYTES] = {
-    0,0,0xFF,0x0F,  0,0,0xFF,0x0F,  0,0,0xFF,0x0F,  0,0,0xFF,0x0F,
+    0,0,0xFF,0x0F,
+    /* 4-channel: 0,0,0xFF,0x0F,  0,0,0xFF,0x0F,  0,0,0xFF,0x0F, */
 };
 
 static uint8_t  own_addr_type;
@@ -325,9 +338,14 @@ static void emg_task(void *p)
 
             if (++log_count >= LOG_EVERY_N_SAMPLES) {
                 log_count = 0;
-                ESP_LOGI(TAG, "EMG GPIO4:%4u GPIO5:%4u GPIO6:%4u GPIO8:%4u | %s",
+                ESP_LOGI(TAG, "EMG GPIO%d:%4u | %s",
+                         emg_gpios[0], sample[0],
+                         is_flexed ? "FLEX (180)" : "RELAX (0)");
+                /* 4-channel:
+                ESP_LOGI(TAG, "EMG GPIO4:%4u GPIO5:%4u GPIO6:%4u GPIO7:%4u | %s",
                          sample[0], sample[1], sample[2], sample[3],
                          is_flexed ? "FLEX (180)" : "RELAX (0)");
+                */
             }
 
             /* Send over BLE if a client is subscribed */
@@ -385,6 +403,10 @@ void app_main(void)
 
     xTaskCreate(emg_task, "emg", 4096, NULL, 5, NULL);
 
+    ESP_LOGI(TAG, "Initialized. Servo on GPIO %d at 0 deg. EMG on GPIO %d (flex logic)",
+             SERVO_GPIO, emg_gpios[FLEX_EMG_INDEX]);
+    /* 4-channel:
     ESP_LOGI(TAG, "Initialized. Servos at 0 deg. EMG on GPIO %d/%d/%d/%d, flex logic on GPIO %d",
              emg_gpios[0], emg_gpios[1], emg_gpios[2], emg_gpios[3], emg_gpios[FLEX_EMG_INDEX]);
+    */
 }

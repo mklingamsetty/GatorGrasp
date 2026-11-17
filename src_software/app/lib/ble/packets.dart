@@ -4,10 +4,11 @@
 import 'dart:typed_data';
 
 /// GPIO pin for each EMG channel, in packet order (firmware `emg_gpios[]`).
-const emgChannelGpios = [4, 5, 6, 8];
+/// Demo firmware: 1 channel on GPIO 7. Full setup: [4, 5, 6, 7].
+const emgChannelGpios = [7];
 
-/// Number of EMG channels the current firmware sends.
-const emgChannelCount = 4;
+/// Number of EMG channels the current firmware sends (full setup: 4).
+const emgChannelCount = 1;
 
 /// ADC counts (12-bit, 0..4095) -> volts, using the board's ~3.1 V reference.
 double toVolts(int raw) => raw / 4095 * 3.1;
